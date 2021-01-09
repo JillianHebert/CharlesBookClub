@@ -1,0 +1,442 @@
+---
+title: "Case Study"
+author: "Jilly Hebert"
+date: "11/15/2020"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Charles Book Club
+
+The Charles Book Club (CBC) distributes books to their customer base after receiving their surveys in the mail. Even though the club was receiving increased mailing orders and diversifying their book selection, they were still loosing profits. CBC decided to revisit their original plan of using database marketing to improve mailing yields and to stay profitable. 
+
+CBC wants to start targeting their customers more appropriately, so to get to know them better, CBC management decided to focus on the most profitable customers and design targeted marketing strategies to best reach them. 
+
+Currently, CBC uses two processes. The first is "Customer Acquisition" which targets new members through magazine, newspaper, and television advertisements. Direct mailing and telemarketing would contact existing club members so they can be notified of new book arrivals before the general advertisements were released. The second process was "Data Collection." This recorded all customer responses and collected any critical information. CBC workers would reach out to members if there was any missing information. 
+
+When new book titles are being released, CBC has a two-step approach. First, they conduct a test of 4,000 randomly sampled customers from the database to analyze their responses. This would create and calibrate CBC's response models for the new book title. Second, they would compute a score for each customer based on the response model and use that score and a cutoff value to extract a target customer list for direct mail promotions. 
+
+
+## Variable Description
+
+4,000 observations and 24 variables.
+
+### Nominal Variables
+* Sequence Number: Sequence number in the partition
+* ID Number: Identification number
+* Recency (R): Months since last book purchase
+* Frequency (F): Total number of book purchases
+* Monetary (M): Total money spent on books
+* FirstPurch: Months since first purchase
+* ChildBks: Number of purchases from the category child books
+* YouthBks: Number of purchases from the category youth books
+* CookBks: Number of purchases from the category cookbooks
+* DoItYBks: Number of purchases from the category do-it-yourself books
+* RefBks: Number of purchases from the category reference books (atlases, encyclopedias, dictionaries)
+* GeoBks: Number of purchases from the category geography books
+* ItalCook: Number of purchases of the book title *Secrets of Italian Cooking*
+* ItalAtlas: Number of purchases of the book title *Historical Atlas of Italy*
+* ItalArt: Number of purchases of the book title *Italian Art*
+
+### Ordinal Variables
+* Rcode: Recency breakdown
+  + Rcode = 1: 0 - 2 months
+  + Rcode = 2: 3 - 6 months
+  + Rcode = 3: 7 - 12 months
+  + Rcode = 4: 13+ months
+  
+* Fcode: Frequency breakdown
+  + Fcode = 1: 1 book
+  + Fcode = 2: 2 books
+  + Fcode = 3: 3+ books
+  
+* Mcode: Monetary breakdown
+  + Mcode = 1: \$0 - \$25
+  + Mcode = 2: \$26 - \$50
+  + Mcode = 3: \$51 - \$100
+  + Mcode = 4: \$101 - \$200
+  + Mcode = 5: \$201+
+  
+* ArtBks: Number of purchases from the category art books
+
+* Related Purchase: Number of related books purchased
+
+### Binary Variables
+* Gender
+  + Gender = 0: Male 
+  + Gender = 1: Female
+  
+* Florence
+  + Florence = 0: Did not buy *The Art History of Florence* 
+  + Florence = 1: Bought *The Art History of Florence*
+
+* Yes_Florence
+  + Yes_Florence = 0: Did not buy *The Art History of Florence* 
+  + Yes_Florence = 1: Bought *The Art History of Florence*
+  
+* No_Florence
+  + No_Florence = 0: Bought *The Art History of Florence* 
+  + No_Florence = 1: Did not buy *The Art History of Florence*
+
+
+## Analysis
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+
+library(tidyverse)
+library(caret)
+library(FNN)
+library(gains)
+
+set.seed(1)
+
+```
+
+
+```{r, echo = FALSE}
+
+df <- read.csv("CharlesBookClub.csv")
+
+df$Florence <- as.factor(df$Florence)
+df$Mcode <- as.factor(df$Mcode)
+df$Rcode <- as.factor(df$Rcode)
+df$Fcode <- as.factor(df$Fcode)
+
+ind <- createDataPartition(df$Florence, p = 0.60, list = FALSE)
+
+train <- df[ind, ]
+valid <- df[-ind, ]
+
+train_count <- as.numeric(nrow(train))
+valid_count <- as.numeric(nrow(valid))
+
+```
+
+A new book title, *The Art History of Florence*, is about to be released and a sample of 4,000 customers has been randomly selected. The customer base was split into a training (60%) data and validation (40%) data so the models could be created using the training data while the validation data was used to evaluate performance. There are `r train_count` customers in the training data set and `r valid_count` customers in the validation data set. *k*-nearest neighbors and logistic regression models will be used to select targeted customers. Special attention will be paid to the RFM (recency, frequency, monetary) segmentation since that is standard industry practice.
+
+
+### Response Rates
+
+First, the response rates for the 4,000 customer sample were identified and the RFM combinations with higher response rates were identified.
+
+```{r, echo = FALSE}
+
+#Problem 1
+
+#Response rate for overall training dataset
+overall <- sum(train$Florence == 1) / nrow(train)
+overall <- round(overall, 4)
+
+#Response rate for RFM categories
+rfm_response <- train %>% group_by(Rcode, Fcode, Mcode) %>% summarise(response_rate = mean(Florence == 1), .groups = "keep")
+#head(rfm_response)
+rfm_response_row <- as.numeric(dim(rfm_response)[1])
+
+rfm_greater <- rfm_response[rfm_response$response_rate >= overall, ]
+#head(rfm_greater)
+rfm_greater_row <- as.numeric(dim(rfm_greater)[1])
+
+```
+
+The overall response rate for the training data set was `r overall`. There were `r rfm_response_row` RFM combinations. Of those, there were `r rfm_greater_row` combinations that had higher response rates than the overall response rate.
+
+
+```{r, echo = FALSE}
+
+#Problem 2
+
+#Only above average combinations
+valid_rfm_greater <- inner_join(valid, rfm_greater, by = c("Rcode", "Fcode", "Mcode"))
+#head(valid_rfm_greater)
+
+valid_greater_overall <- sum(valid_rfm_greater$Florence == 1) / nrow(valid_rfm_greater)
+valid_greater_overall <- round(valid_greater_overall, 4)
+
+```
+
+The overall response rate for those with "above average" RFM combinations in the validation set was `r valid_greater_overall`. 
+
+
+### Segmentation
+
+Segments were created using the response rates to identify the combinations that have higher rates. Those with response rates that exceeded twice the overall training response rate were placed in segment 1. Those with response rates that were greater than the overall training response rate but less than twice the overall training response rate were placed in segment 2. The remaining combinations were placed in segment 3. 
+
+```{r, echo = FALSE}
+
+#Problem 3
+
+#Segment
+rfm_response_segment <- rfm_response %>% mutate(segment = ifelse(response_rate > 2 * overall, 1, ifelse(response_rate > overall & response_rate < 2 * overall, 2, 3)))
+#head(rfm_response_segment)
+#table(rfm_response_segment$segment)
+
+rfm_response_segment_valid <- valid %>% group_by(Rcode, Fcode, Mcode) %>% summarise(response_rate = mean(Florence == 1), .groups = "keep") %>% mutate(segment = ifelse(response_rate > 2 * overall, 1, ifelse(response_rate > overall & response_rate < 2 * overall, 2, 3)))
+#head(rfm_response_segment_valid)
+#table(rfm_response_segment_valid$segment)
+
+
+#Curve
+valid_segment <- inner_join(valid, rfm_response_segment_valid, by = c("Rcode", "Fcode", "Mcode"))
+#head(valid_segment[, 25:26])
+lift_curve <- lift(relevel(as.factor(Florence), ref = "1") ~ response_rate, data = valid_segment)
+xyplot(lift_curve, plot = "gain", main = "Validation Lift Curve")
+
+```
+
+The validation lift curve shows the number of customers by the cumulative number of buyers in the validation data set. The gap between the shaded area and the blue line identifies the gains that the company sees from using the segmentation over randomly sampling.
+
+
+### k-Nearest Neighbors Modeling
+To more accurately identify customers that would purchase *The Art History of Florence*, two *k*-Nearest Neighbors models will be built. The first model will use a categorical response variable while the second model will use a numeric response variable. These models will be used to identify if targeting customers using the models is better than random sampling.
+
+
+#### Categorical Response
+
+The first *k*-Nearest Neighbors model will use a categorical response variable.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+
+#Problem 4
+
+sub <- c("R", "F", "M", "FirstPurch", "Related.Purchase")
+
+knn_train <- train %>% select("R", "F", "M", "FirstPurch", "Related.Purchase", "Florence")
+knn_train$R <- as.numeric(as.character(knn_train$R))
+knn_train$F <- as.numeric(as.character(knn_train$F))
+knn_train$M <- as.numeric(as.character(knn_train$M))
+knn_train$FirstPurch <- as.numeric(as.character(knn_train$FirstPurch))
+knn_train$Related.Purchase <- as.numeric(as.character(knn_train$Related.Purchase))
+knn_train$Florence <- as.factor(knn_train$Florence)
+
+
+knn_valid <- valid %>% select("R", "F", "M", "FirstPurch", "Related.Purchase", "Florence")
+knn_valid$R <- as.numeric(as.character(knn_valid$R))
+knn_valid$F <- as.numeric(as.character(knn_valid$F))
+knn_valid$M <- as.numeric(as.character(knn_valid$M))
+knn_valid$FirstPurch <- as.numeric(as.character(knn_valid$FirstPurch))
+knn_valid$Related.Purchase <- as.numeric(as.character(knn_valid$Related.Purchase))
+knn_valid$Florence <- factor(knn_valid$Florence)
+
+
+#Normalize
+norm_values <- preProcess(knn_train[, -6], method = c("center", "scale"))
+knn_train[, -6] <- predict(norm_values, knn_train[, -6])
+knn_valid[, -6] <- predict(norm_values, knn_valid[, -6])
+
+#Best k
+accuracy.df <- data.frame(k = seq(1, 11, 1), accuracy = rep(0, 11))
+for(i in 1:11){
+  
+knn_mod <- class::knn(train = knn_train[, 1:5], test = knn_valid[, 1:5], cl = knn_train[, 6], k = i)
+
+accuracy.df[i, 2] <- confusionMatrix(knn_mod, knn_valid[, 6])$overall[1]
+  
+}
+#accuracy.df
+best_k <- accuracy.df[which.max(accuracy.df[, 2]), 1]
+best_k_acc <- accuracy.df[which.max(accuracy.df[, 2]), 2]
+best_k_acc <- round(best_k_acc * 100, 2)
+
+
+#Curve
+knn_mod_best <- class::knn(train = knn_train[, 1:5], test = knn_valid[, 1:5], cl = as.factor(knn_train[, 6]), k = best_k, prob = TRUE)
+knn_best_mat <- confusionMatrix(as.factor(knn_mod_best), as.factor(knn_valid[, 6]))
+#knn_best_mat$table
+
+knn_best_lift <- lift(as.factor(knn_valid[, 6]) ~ as.factor(knn_mod_best))
+xyplot(knn_best_lift, plot = "gain", main = "k-NN Lift Curve")
+
+gain <- gains(as.numeric(as.character(knn_valid$Florence)), as.numeric(as.character(knn_mod_best)))
+heights <- gain$mean.resp / mean(as.numeric(as.character(knn_valid$Florence)))
+dwlift <- barplot(heights, names.arg = gain$depth, xlab = "Percentile", ylab = "Mean Response", main = "Decile-wise lift chart", ylim = c(0, max(heights + 0.3)))
+text(dwlift, heights + 0.1, labels = round(heights, 2), cex = 0.8)
+
+```
+
+The k value in the *k*-NN model indicates the count of the nearest neighbors. It is used to compute distances between test points and trained label points. Using the k value of `r best_k` results in the highest accuracy of `r best_k_acc`%. Because there are no predictions for purchasing the book, the lift curve is empty and the Decile-wise lift chart shows the same outcome as random sampling would produce. Since the first and only bar is equal to 1, it shows that using the *k*-NN model for targeted sampling is performing the same as random sampling. The lift curve shows that there would be no difference between using the *k*-NN model for targeted sampling and random sampling.
+
+
+#### Numeric Response
+
+The second *k*-Nearest Neighbors model will use a numeric response variable.
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+
+#Problem 5
+
+knn_train$Florence <- as.numeric(as.character(knn_train$Florence))
+knn_valid$Florence <- as.numeric(as.character(knn_valid$Florence))
+
+knn.reg.out <- FNN::knn.reg(train = knn_train[, -6], test = knn_valid[, -6], y = knn_train[, 6], k = best_k)
+
+knn_lift <- lift(factor(knn_valid$Florence) ~ knn.reg.out$pred)
+xyplot(knn_lift, plot = "gain", main = "k-NN Lift Curve")
+
+gain <- gains(as.numeric(as.character(knn_valid$Florence)), knn.reg.out$pred)
+heights <- gain$mean.resp / mean(as.numeric(as.character(knn_valid$Florence)))
+dwlift <- barplot(heights, names.arg = gain$depth, xlab = "Percentile", ylab = "Mean Response", main = "Decile-wise lift chart", ylim = c(0, max(heights + 0.3)))
+text(dwlift, heights + 0.2, labels = round(heights, 2), cex = 0.8)
+
+knn_mat <- confusionMatrix(as.factor(ifelse(knn.reg.out$pred > 0.5, 1, 0)), as.factor(knn_valid$Florence))
+#knn_mat$table
+
+knn_acc <- as.numeric(knn_mat$overall[1]) * 100
+knn_acc <- round(knn_acc, 2)
+
+knn_prob_max <- max(knn.reg.out$pred)
+knn_prob_max <- round(knn_prob_max, 4)
+knn_prob_min <- min(knn.reg.out$pred)
+knn_prob_range <- knn_prob_max - knn_prob_min
+knn_prob_range <- round(knn_prob_range, 2)
+
+```
+
+When Florence is treated as a numeric value, the model accuracy was `r knn_acc`%. The maximum predicted probability was `r knn_prob_max` and the minimum predicted probability was `r knn_prob_min`, giving a range of `r knn_prob_range`.
+
+For the Decile-wise chart, since the bar probabilities are not in descending order, it can be determined that using the *k*-NN model for targeted sampling is not doing better than random sampling.
+
+The lift curve further confirms this because it shows that there is no gap between the blue line and the shaded area, meaning that the *k*-NN model is not leading to more gains when using the *k*-NN model over randomly sampling.
+
+This model had the same accuracy than the *k*-NN model that treated the response as categorical, but did slightly better than random sampling, as seen by the Decile-wise lift chart.
+
+
+### Logistic Regression Modeling
+To more accurately identify customers that would purchase *The Art History of Florence*, three logistic regression models will be built. The first model will use all sixteen variables, the second model with use the best determined variables, and the last model will use only RFM variables. These models will be used to identify if targeting customers using these models are better than random sampling.
+
+#### Full Model
+
+The full model will include all 16 variables.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+#Problem 6
+
+train_small <- train[, c(3, 7:22)]
+train_small$Gender <- factor(train_small$Gender)
+
+valid_small <- valid[, c(3, 7:22)]
+valid_small$Gender <- factor(valid_small$Gender)
+
+
+#All 16 variables
+full_mod <- glm(Florence ~ ., data  = train_small, family = "binomial")
+#summary(full_mod)
+
+full_pred <- predict(full_mod, newdata = valid_small[, -13], type = "response")
+#sort(full_pred, decreasing = FALSE)
+
+full_mat <- confusionMatrix(data = factor(ifelse(full_pred > 0.5, 1, 0)), reference = factor(valid_small$Florence), positive = "1")
+#full_mat$table
+full_acc <- round(as.numeric(full_mat$overall[1]) * 100, 2)
+#full_acc #91.56% accuracy
+
+full_lift <- lift(relevel(valid_small$Florence, ref = "1") ~ full_pred)
+xyplot(full_lift, plot = "gain", main = "Full Model Lift Curve")
+
+gain <- gains(as.numeric(valid_small$Florence), full_pred)
+heights <- gain$mean.resp / mean(as.numeric(valid_small$Florence))
+midpoints <- barplot(heights, names.arg = gain$depth, ylim = c(0,9), xlab = "Percentile", ylab = "Mean Response", main = "Decile-Wise Lift Chart")
+text(midpoints, heights + 0.7, labels = round(heights, 2), cex = 0.8)
+
+```
+
+When using the full model, the top 10% of customers who bought the book would lead to 1.11 times as many purchases than would selecting 10% of the customers at random. The full model has an accuracy of `r full_acc`%. The gap between the shaded area and the blue line identifies the gains that the company sees from using the model over randomly sampling.
+
+
+#### Best Predictors Model
+
+The best predictors model will be determined by using a backward stepping algorithm on the full model.
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+#Problem 6
+
+step_mod <- step(full_mod, direction = "backward", trace = 0)
+#step_mod
+best_mod <- glm(Florence ~ Gender + ArtBks + GeogBks + Rcode, data = train_small, family = "binomial")
+#summary(best_mod)
+
+best_pred <- predict(best_mod, newdata = valid_small[, -13], type = "response")
+#sort(best_pred, decreasing = FALSE)
+
+best_mat <- confusionMatrix(data = factor(ifelse(best_pred > 0.5, 1, 0)), reference = factor(valid_small$Florence), positive = "1")
+#best_mat$table
+best_acc <- round(as.numeric(best_mat$overall[1]) * 100, 2)
+#best_acc #91.49% accuracy
+
+best_lift <- lift(relevel(valid_small$Florence, ref = "1") ~ best_pred)
+xyplot(best_lift, plot = "gain", main = "Best Model Lift Curve")
+
+best_gain <- gains(as.numeric(valid_small$Florence), best_pred)
+best_heights <- best_gain$mean.resp / mean(as.numeric(valid_small$Florence))
+best_midpoints <- barplot(best_heights, names.arg = best_gain$depth, ylim = c(0,9), xlab = "Percentile", ylab = "Mean Response", main = "Decile-Wise Lift Chart")
+text(best_midpoints, best_heights + 0.7, labels = round(best_heights, 2), cex = 0.8)
+
+```
+
+When using backwards stepping to reduce the full model to only the best predictors, the variables used in the best model were Gender, ArtBks, GeogBks, and Rcode. The best predictors model, the top 10% of customers who bought the book would lead to 1.10 times as many purchases than would selecting 10% of the customers at random. The best predictors model has an accuracy of `r best_acc`%. The gap between the shaded area and the blue line identifies the gains that the company sees from using the model over randomly sampling.
+
+
+#### RFM Variables Model
+
+The RFM model will use the ordinal variables of recency, monetary, and frequency. 
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+#Problem 6
+
+rfm_mod <- glm(Florence ~ Mcode + Rcode + Fcode, data = train_small, family = "binomial")
+#summary(rfm_mod)
+
+rfm_pred <- predict(rfm_mod, newdata = valid_small[, -13], type = "response")
+#sort(rfm_pred, decreasing = FALSE)
+
+rfm_mat <- confusionMatrix(data = factor(ifelse(rfm_pred > 0.5, 1, 0)), reference = factor(valid_small$Florence), positive = "1")
+#rfm_mat$table
+rfm_acc <- round(as.numeric(rfm_mat$overall[1]) * 100, 2)
+#rfm_acc #91.56% accuracy
+
+rfm_lift <- lift(relevel(valid_small$Florence, ref = "1") ~ rfm_pred)
+xyplot(rfm_lift, plot = "gain", main = "RFM Model Lift Curve")
+
+rfm_gain <- gains(as.numeric(valid_small$Florence), rfm_pred)
+rfm_heights <- rfm_gain$mean.resp / mean(as.numeric(valid_small$Florence))
+rfm_midpoints <- barplot(rfm_heights, names.arg = rfm_gain$depth, ylim = c(0,9), xlab = "Percentile", ylab = "Mean Response", main = "Decile-Wise Lift Chart")
+text(rfm_midpoints, rfm_heights + 0.7, labels = round(rfm_heights, 2), cex = 0.8)
+
+```
+
+When using the RFM model, the top 10% of customers who bought the book would lead to 1.06 times as many purchases than would selecting 10% of the customers at random. The RFM model has an accuracy of `r rfm_acc`%. The gap between the shaded area and the blue line identifies the gains that the company sees from using the model over randomly sampling.
+
+
+### Model Comparisons
+The Logistic Regression models all perform similarly, but the *k*-Nearest Neighbors models seemed to perform similarly to random sampling. The model that did the best job was the full logistic regression model with the best predictors logistic regression model as a close second. The models only performed slightly better than random sampling, so the more important issue to address is the low response rates. Because the response rates were so low, it would be suggested to increase the sample of customers for more accurate model predictions until more customers are purchasing new books.
+
+
+### Mail Campaign
+```{r, echo = FALSE}
+
+#Problem 7
+
+rfm_response_valid <- valid %>% group_by(Rcode, Fcode, Mcode) %>% summarise(response_rate = mean(Florence == 1), .groups = "keep")
+#head(rfm_response_valid)
+tot <- as.numeric(dim(rfm_response_valid)[1])
+
+rfm_highly_likely <- rfm_response_valid[rfm_response_valid$response_rate >= 0.30,]
+#rfm_highly_likely
+
+rfm_highly_likely_valid <- inner_join(valid, rfm_highly_likely, by = c("Rcode", "Fcode", "Mcode"))
+#rfm_highly_likely_valid
+rfm_highly_likely_valid_count <- as.numeric(nrow(rfm_highly_likely_valid))
+
+bought <- sum(as.numeric(as.character(rfm_highly_likely_valid$Florence)))
+
+```
+
+If CBC wants a 30% likelihood of purchase, then there are `r rfm_highly_likely_valid_count` people out of the `r tot` people in the validation data set that would be targeted. Of those `r rfm_highly_likely_valid_count` people, `r bought` people purchased *The Art History of Florence*.
+
