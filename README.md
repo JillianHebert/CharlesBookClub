@@ -5,7 +5,7 @@ The Charles Book Club case study comes from the textbook *Data Mining for Busine
 
 # Repository Content
 - `README.md`: This file with explanation of the project.
-- `CharlesBookClub.xlxs`: The data file provided by the book.
+- `CharlesBookClub.csv`: The data file provided by the book.
 - `CaseStudy.Rmd`: R markdown file that was used to analyze the data.
 - `CaseStudy.docx`: Word output of the report.
 - `CaseStudy.html`: The html output of the report.
