@@ -1,6 +1,6 @@
 # Charles Book Club
 
-The Charles Book Club case study comes from the textbook *Data Mining for Business Analytics*. For a statistical learning class at University of Wisconsin - La Crosse, I completed a report to compare different models in hopes of targeting customers to increase book purchases.
+The Charles Book Club case study comes from the textbook *Data Mining for Business Analytics*. For a statistical learning class at University of Wisconsin - La Crosse, I completed a report to compare different models to random sampling in hopes of more accurately targeting customers to increase book purchases.
 
 
 # Repository Content
