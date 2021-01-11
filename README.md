@@ -10,6 +10,7 @@ The Charles Book Club case study comes from the textbook *Data Mining for Busine
 
 
 # References
+R Core Team (2019). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. URL https://www.R-project.org/.
 
 Shmueli, Galit, Peter Bruce, Inbal Yahav, Nitin Patel, and Kenneth Lichtendahl (2018). Data Mining For Business Analytics: Concepts, Techniques, and Applications in R. John Wiley & Sons, Inc. 491-497.
 
